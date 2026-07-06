@@ -86,4 +86,7 @@ rapidfuzz>=3.14.0
 # torchgeo also pulled in `lightning` transitively; disabled for the same
 # quarantine reason as terratorch above. Restore once the quarantine clears.
 # torchgeo==0.7.0
-multiprocess==0.70.16
+multiprocess==0.70.19
+
+pydantic==2.13.1
+xgrammar==0.2.3
