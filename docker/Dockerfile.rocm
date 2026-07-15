@@ -1,7 +1,7 @@
 # default base image
 ARG REMOTE_VLLM="0"
 ARG COMMON_WORKDIR=/app
-ARG BASE_IMAGE=rjrock2/public:vllm-base_rocm715-py314
+ARG BASE_IMAGE=rjrock2/public:base_rocm715_jul15
 ARG CI_BASE_IMAGE=ci_base
 # NIC backend for MoRI RDMA support.
 # By default (all), drivers and userspace libraries for all supported NIC types
