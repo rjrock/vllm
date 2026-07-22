@@ -395,6 +395,12 @@ RUN --mount=type=cache,target=/root/.cache/ccache \
 ENV PATH=/usr/local/ucx/bin:$PATH
 ENV LD_LIBRARY_PATH=${UCX_HOME}/lib:${LD_LIBRARY_PATH}
 
+# Remove old Abseil packages to allow NIXL to use its subproject fallback
+# Ubuntu 24.04's Abseil (20220623) is too old and lacks absl_log support
+RUN apt-get purge -y libabsl-dev libabsl20220623 || true && \
+    apt-get autoremove -y && \
+    rm -rf /var/lib/apt/lists/*
+
 RUN --mount=type=cache,target=/root/.cache/ccache \
     git clone ${NIXL_REPO} /opt/nixl && \
     cd /opt/nixl && \
