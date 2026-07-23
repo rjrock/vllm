@@ -15,7 +15,9 @@ set -euo pipefail
 
 DEFAULT_REPO_SLUG="vllm-project/vllm"
 DEFAULT_CI_HCL_SOURCE="docker/ci-rocm.hcl"
-DEFAULT_CI_BASE_CONTENT_FILES="requirements/common.txt requirements/rocm.txt requirements/test/rocm.txt docker/Dockerfile.rocm_base tools/install_torchcodec_rocm.sh tests/vllm_test_utils"
+# DEFAULT_CI_BASE_CONTENT_FILES="requirements/common.txt requirements/rocm.txt requirements/test/rocm.txt docker/Dockerfile.rocm_base tools/install_torchcodec_rocm.sh tests/vllm_test_utils"
+export CI_BASE_IMAGE=rjrock2/public:base_rocm714_jul22
+export DEFAULT_CI_BASE_CONTENT_FILES=""
 DEFAULT_CI_BASE_DOCKERFILE="docker/Dockerfile.rocm"
 DEFAULT_CI_BASE_DOCKERFILE_STAGES="base build_rixl build_rocshmem build_deepep mori_base ci_base"
 IMAGE_EXISTED_BEFORE_BUILD=0
