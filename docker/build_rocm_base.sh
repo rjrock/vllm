@@ -4,6 +4,7 @@ PREBUILD_KERNELS="1"
 PYTHON_VERSION="3.14"
 PYTORCH_ROCM_ARCH="gfx90a;gfx942;gfx950"
 ROCM_SDK_VERSION="7.14.0"
+TORCH_VERSION="2.12"
 
 DOCKER_BUILDKIT=1 docker build \
     --build-arg AITER_BRANCH="${AITER_BRANCH}" \
@@ -12,6 +13,7 @@ DOCKER_BUILDKIT=1 docker build \
     --build-arg PYTHON_VERSION="${PYTHON_VERSION}" \
     --build-arg PYTORCH_ROCM_ARCH="${PYTORCH_ROCM_ARCH}" \
     --build-arg ROCM_SDK_VERSION="${ROCM_SDK_VERSION}" \
+    --build-arg TORCH_VERSION="${TORCH_VERSION}" \
     --build-arg USE_SCCACHE=1 \
     -f Dockerfile.rocm_base \
     -t "${IMAGE_NAME}:${IMAGE_TAG}" \
