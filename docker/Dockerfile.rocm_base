@@ -1,7 +1,8 @@
-ARG BASE_IMAGE=ubuntu:24.04
+ARG UBUNTU_VERSION="24.04"
+ARG BASE_IMAGE="ubuntu:${UBUNTU_VERSION}"
 ARG FA_BRANCH="0e60e394"
 ARG FA_REPO="https://github.com/Dao-AILab/flash-attention.git"
-ARG AITER_BRANCH="v0.1.17"
+ARG AITER_BRANCH="v0.1.19"
 ARG AITER_REPO="https://github.com/ROCm/aiter.git"
 
 # Sccache configuration - LOCAL DISK MODE
@@ -82,13 +83,11 @@ ENV SCCACHE_CACHE_SIZE="50G"
 ###
 ### TheROCK install - CUSTOM: Install only gfx90a, gfx942, gfx950
 ###
-ARG PIP_EXTRA_INDEX_URL=https://repo.amd.com/rocm/whl-multi-arch/
-ENV PIP_EXTRA_INDEX_URL="${PIP_EXTRA_INDEX_URL}"
-ARG ROCM_SDK_VERSION="7.14.0"
-ENV ROCM_SDK_VERSION="7.14.0"
-ARG TORCH_VERSION=2.12.0
-ARG TORCHAUDIO_VERSION=2.11.0
-ARG TORCHVISION_VERSION=0.26.0
+ARG PIP_EXTRA_INDEX_URL="https://rocm.prereleases.amd.com/whl-multi-arch"
+ARG ROCM_SDK_VERSION="10.0.0rc2"
+ARG TORCH_VERSION="2.12.0"
+ARG TORCHAUDIO_VERSION="2.11.0"
+ARG TORCHVISION_VERSION="0.27.0"
 
 # Install ROCm SDK (base - no device-specific packages yet)
 RUN uv pip install --index-url ${PIP_EXTRA_INDEX_URL} \
@@ -132,8 +131,9 @@ ENV ROCM_PATH="$SITE_PACKAGES/_rocm_sdk_devel" \
     HIP_DEVICE_LIB_PATH="$SITE_PACKAGES/_rocm_sdk_core/lib/llvm/amdgcn/bitcode"
 ENV LD_LIBRARY_PATH="$SITE_PACKAGES/_rocm_sdk_devel/lib:$SITE_PACKAGES/_rocm_sdk_devel/lib/rocm_sysdeps/lib:$SITE_PACKAGES/_rocm_sdk_core/lib:$SITE_PACKAGES/_rocm_sdk_core/lib/rocm_sysdeps/lib"
 ENV PATH="$SITE_PACKAGES/_rocm_sdk_devel/bin:$SITE_PACKAGES/_rocm_sdk_devel/lib/llvm/bin:$SITE_PACKAGES/_rocm_sdk_core/bin:${PATH}"
-RUN cd $SITE_PACKAGES/_rocm_sdk_core/share/amd_smi && uv pip install .
-ENV PYTHONPATH=$SITE_PACKAGES/_rocm_sdk_core/share/amd_smi:$PYTHONPATH
+
+RUN ln -sf /opt/python/lib/python3.14/site-packages/_rocm_sdk_core/share/amd_smi/amdsmi \
+           /opt/python/lib/python3.14/site-packages/amdsmi
 
 # Setup sccache wrappers for HIP compilation via HIP_CLANG_PATH
 # Must run AFTER rocm-sdk init so clang++ is installed
@@ -211,9 +211,6 @@ RUN --mount=type=cache,target=/sccache \
         git clone --recursive ${AITER_REPO} \
         && cd aiter \
         && git checkout ${AITER_BRANCH} \
-        && git config user.email "docker@build.local" \
-        && git config user.name "Docker Build" \
-        && git cherry-pick b47065bfabcf1213e0f64c4d1636224916164adf \
         && git submodule update --init --recursive \
         && uv pip install -r requirements.txt \
         && uv pip install pyyaml \
@@ -253,13 +250,33 @@ RUN --mount=type=bind,from=debs,src=/app/debs,target=/install \
     uv pip install /install/*.whl
 
 ARG BASE_IMAGE
+ARG UBUNTU_VERSION
 ARG FA_BRANCH
 ARG FA_REPO
 ARG AITER_BRANCH
 ARG AITER_REPO
-RUN echo "BASE_IMAGE: ${BASE_IMAGE}" > /app/versions.txt \
-    && echo "FA_BRANCH: ${FA_BRANCH}" >> /app/versions.txt \
-    && echo "FA_REPO: ${FA_REPO}" >> /app/versions.txt \
-    && echo "AITER_BRANCH: ${AITER_BRANCH}" >> /app/versions.txt \
-    && echo "AITER_REPO: ${AITER_REPO}" >> /app/versions.txt \
-    && echo "GPU_ARCHS: gfx90a;gfx942;gfx950" >> /app/versions.txt
+RUN export TRITON_VERSION=$(uv pip show triton | awk '/^Version:/ {print $2}') \
+    && python3 <<'PYEOF'
+import json
+import os
+
+keys = [
+    "BASE_IMAGE",
+    "FA_BRANCH",
+    "FA_REPO",
+    "AITER_BRANCH",
+    "AITER_REPO",
+    "PYTHON_VERSION",
+    "UBUNTU_VERSION",
+    "PIP_EXTRA_INDEX_URL",
+    "ROCM_SDK_VERSION",
+    "TORCH_VERSION",
+    "TORCHAUDIO_VERSION",
+    "TORCHVISION_VERSION",
+    "TRITON_VERSION",
+]
+versions = {key: os.environ.get(key, "") for key in keys}
+with open("/app/versions.json", "w") as f:
+    json.dump(versions, f, indent=2, sort_keys=True)
+    f.write("\n")
+PYEOF
