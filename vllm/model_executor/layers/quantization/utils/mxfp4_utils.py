@@ -93,6 +93,18 @@ def _swizzle_mxfp4(quant_tensor, scale, num_warps=8):
                 "epilogue_subtile": 1,
             }
             opt_flags.update_opt_flags_constraints(constraints)
+    elif current_platform.is_rocm():
+        try:
+            from triton.backends.amd.compiler import is_async_copy_enabled
+            from vllm.platforms.rocm import on_gfx950
+            if on_gfx950() and bool(is_async_copy_enabled("gfx950")) is True:
+                constraints = {
+                    "block_k": 128,
+                }
+                opt_flags.update_opt_flags_constraints(constraints)
+        except ImportError:
+            pass
+
     # transpose the tensor so that the quantization axis is on dim1
     quant_tensor = quant_tensor.transpose(-2, -1)
     scale = scale.transpose(-2, -1)
