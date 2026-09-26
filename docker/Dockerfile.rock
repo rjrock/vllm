@@ -447,7 +447,8 @@ RUN --mount=type=cache,target=/root/.cache/ccache \
                      -Ducx_path=${UCX_HOME} \
                      -Dwheel_variant=rocm \
                      -Dbuild_tests=false \
-                     -Dbuild_examples=false && \
+                     -Dbuild_examples=false \
+                     --force-fallback-for=abseil-cpp && \
     cd build && \
     ninja -j$(nproc) && \
     ninja install && \
@@ -469,14 +470,15 @@ RUN cd /opt/nixl && \
         -Csetup-args=-Ducx_path=${UCX_HOME} \
         -Csetup-args=-Dwheel_variant=rocm \
         -Csetup-args=-Dbuild_tests=false \
-        -Csetup-args=-Dbuild_examples=false && \
+        -Csetup-args=-Dbuild_examples=false \
+        -Csetup-args=--force-fallback-for=abseil-cpp && \
     mkdir -p /tmp/nixl_wheels/repaired /app/install && \
     auditwheel repair \
         --exclude 'libamdhip64*' \
         --exclude 'libcore*' \
         --exclude 'libpull*' \
         /tmp/nixl_wheels/nixl_rocm*.whl \
-        --plat manylinux_2_34_$(uname -m) \
+        --plat manylinux_2_39_$(uname -m) \
         --wheel-dir /tmp/nixl_wheels/repaired && \
     ./contrib/wheel_add_ucx_plugins.py \
         --ucx-plugins-dir ${UCX_HOME}/lib/ucx \
