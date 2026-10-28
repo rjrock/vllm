@@ -236,6 +236,7 @@ def _qkvr_qkv_kernel(
     D_REL: tl.constexpr,
     REL_EXTENT: tl.constexpr,
     REL_EXTENT_PADDED: tl.constexpr,
+    IS_FP8_KV: tl.constexpr,
 ):
     block = tl.program_id(0)
     num_q_rows = tokens * NUM_Q_HEADS
@@ -382,24 +383,34 @@ def _qkvr_qkv_kernel(
             safe_attention_slot = tl.maximum(attention_slot, 0)
             attention_block = safe_attention_slot // attention_page_size
             attention_offset = safe_attention_slot % attention_page_size
-            tl.store(
+            key_cache_addr = (
                 key_cache_ptr
                 + attention_block * stride_kc_block
                 + attention_offset * stride_kc_token
                 + head * stride_kc_head
-                + dims,
-                k_normalized,
-                mask=attention_slot >= 0,
+                + dims
             )
-            tl.store(
+            value_cache_addr = (
                 value_cache_ptr
                 + attention_block * stride_vc_block
                 + attention_offset * stride_vc_token
                 + head * stride_vc_head
-                + dims,
-                v_rounded,
-                mask=attention_slot >= 0,
+                + dims
             )
+            if IS_FP8_KV:
+                tl.store(
+                    key_cache_addr,
+                    k_normalized.to(tl.float8e4nv).to(tl.uint8, bitcast=True),
+                    mask=attention_slot >= 0,
+                )
+                tl.store(
+                    value_cache_addr,
+                    v_rounded.to(tl.float8e4nv).to(tl.uint8, bitcast=True),
+                    mask=attention_slot >= 0,
+                )
+            else:
+                tl.store(key_cache_addr, k_normalized, mask=attention_slot >= 0)
+                tl.store(value_cache_addr, v_rounded, mask=attention_slot >= 0)
 
 
 @triton.jit(do_not_specialize=["num_rows"])
@@ -483,6 +494,7 @@ def _kv_kernel(
     OFF_K: tl.constexpr,
     OFF_V: tl.constexpr,
     BLOCK_ROWS: tl.constexpr,
+    IS_FP8_KV: tl.constexpr,
 ):
     token = tl.program_id(0) * BLOCK_ROWS + tl.arange(0, BLOCK_ROWS)
     dims = tl.arange(0, HEAD_DIM)
@@ -592,24 +604,34 @@ def _kv_kernel(
     attention_block = safe_attention_slot // attention_page_size
     attention_offset = safe_attention_slot % attention_page_size
     attention_mask = row_mask & (attention_slot >= 0)
-    tl.store(
+    key_cache_addr = (
         key_cache_ptr
         + attention_block[:, None] * stride_kc_block
         + attention_offset[:, None] * stride_kc_token
         + head[:, None] * stride_kc_head
-        + dims[None, :],
-        k_normalized,
-        mask=attention_mask[:, None],
+        + dims[None, :]
     )
-    tl.store(
+    value_cache_addr = (
         value_cache_ptr
         + attention_block[:, None] * stride_vc_block
         + attention_offset[:, None] * stride_vc_token
         + head[:, None] * stride_vc_head
-        + dims[None, :],
-        v_rounded,
-        mask=attention_mask[:, None],
+        + dims[None, :]
     )
+    if IS_FP8_KV:
+        tl.store(
+            key_cache_addr,
+            k_normalized.to(tl.float8e4nv).to(tl.uint8, bitcast=True),
+            mask=attention_mask[:, None],
+        )
+        tl.store(
+            value_cache_addr,
+            v_rounded.to(tl.float8e4nv).to(tl.uint8, bitcast=True),
+            mask=attention_mask[:, None],
+        )
+    else:
+        tl.store(key_cache_addr, k_normalized, mask=attention_mask[:, None])
+        tl.store(value_cache_addr, v_rounded, mask=attention_mask[:, None])
 
 
 def _run_tiled_q(
@@ -703,6 +725,7 @@ def _run_tiled_kv(
         OFF_K=off_k,
         OFF_V=off_v,
         BLOCK_ROWS=KV_BLOCK_ROWS,
+        IS_FP8_KV=key_cache.dtype == torch.uint8,
         num_warps=KV_NUM_WARPS,
     )
 
@@ -787,6 +810,7 @@ def _run_fused_small(
         D_REL=16,
         REL_EXTENT=rel_proj.shape[1],
         REL_EXTENT_PADDED=triton.next_power_of_2(rel_proj.shape[1]),
+        IS_FP8_KV=key_cache.dtype == torch.uint8,
         num_warps=SMALL_NUM_WARPS,
     )
 
