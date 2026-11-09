@@ -474,6 +474,55 @@ def test_bench_forward_pipeline(tmp_path):
     assert np.median(expected[margin:-margin]) == pytest.approx(row["median_us"])
 
 
+@pytest.mark.skipif(
+    torch.accelerator.device_count() < 2,
+    reason="Needs two devices to exercise a TP>1 custom all-reduce.",
+)
+def test_bench_forward_tensor_parallel_graph_vs_eager(tmp_path):
+    """TP>1 custom all-reduce must not corrupt capture.py's eager reference.
+
+    Regression test for the eager/reference tensors being computed inside
+    graph_capture but outside the captured region: a capture-mode custom
+    all-reduce (vLLM-native or AITER) then substitutes a placeholder instead
+    of doing the real collective, making graph_vs_eager spuriously huge.
+    """
+    output = tmp_path / "tp.json"
+    command = [
+        sys.executable,
+        "-m",
+        "torch.distributed.run",
+        "--standalone",
+        "--nproc-per-node=2",
+        "-m",
+        "vllm.entrypoints.cli.main",
+        "bench",
+        "forward",
+        "--model",
+        MODEL_NAME,
+        "--tensor-parallel-size",
+        "2",
+        "--max-model-len",
+        "2048",
+        "--gpu-memory-utilization",
+        "0.3",
+        "--case",
+        "prefill=8*128",
+        "--iters",
+        "4",
+        "--samples",
+        "2",
+        "--no-enable-extensible-kv-cache",
+        "--output-json",
+        str(output),
+    ]
+    result = subprocess.run(command, capture_output=True, text=True, timeout=600)
+    assert result.returncode == 0, result.stdout + result.stderr
+    (row,) = json.loads(output.read_text())
+    for rank in row["ranks"]:
+        assert rank["finite"]
+        assert rank["graph_vs_eager"]["relative_rms"] == 0
+
+
 @pytest.mark.parametrize("rank", [0, 1])
 def test_pcp_query_tokens(rank):
     """PCP rows receive their query slice, including a continued prefix."""

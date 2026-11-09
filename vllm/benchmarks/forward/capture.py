@@ -257,13 +257,20 @@ class ForwardBench:
         if world.world_size > 1:
             # Initialize the communicator outside capture.
             torch.distributed.all_reduce(flag, group=world.device_group)
+        # Computed outside graph_capture: inside it, but before the graph
+        # itself starts recording, capture-mode all-reduces (vLLM-native and
+        # AITER custom all-reduce) substitute a placeholder instead of doing
+        # the real collective, corrupting these references at TP>1.
+        eager = _first_tensor(self._run_model()).clone()
+        restore()
+        reference = _first_tensor(self._run_model()).clone()
+        draft_reference = self.drafter.tokens.clone() if self.drafter else None
         with graph_capture(self.device) as capture_context:
             stream = capture_context.stream
             # Some kernels set up per-stream state on first use, outside capture.
-            eager = _first_tensor(self._run_model()).clone()
             restore()
-            reference = _first_tensor(self._run_model()).clone()
-            draft_reference = self.drafter.tokens.clone() if self.drafter else None
+            self._run_model()
+            restore()
             stream.synchronize()
             graph = torch.cuda.CUDAGraph()
             with torch.cuda.graph(graph, stream=stream):
